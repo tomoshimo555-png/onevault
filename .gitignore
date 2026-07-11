@@ -1,0 +1,12 @@
+node_modules/
+dist/
+/legacy/
+.env
+.env.*
+!.env.example
+.onevault-port
+coverage/
+playwright-report/
+test-results/
+*.local
+*.tsbuildinfo
