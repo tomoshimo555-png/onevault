@@ -138,16 +138,20 @@ export async function createRemoteNote(
   descriptor: VaultDescriptor,
   title: string,
   items: VaultItemRecord[],
-  folderName = "00_Inbox",
+  folderPath = "00_Inbox",
 ) {
-  const folder = await ensureFolder(descriptor.vaultRootItemId, folderName);
   const safeName = title.replace(/[\\/:*?"<>|]/g, " ").trim() || "無題";
-  const remote = await createText(folder.id, `${safeName}.md`, `# ${safeName}\n\n`);
+  const safeFolderPath = folderPath.split("/").map((part) => part.trim()).filter(Boolean).join("/");
+  let parentId = descriptor.vaultRootItemId;
+  for (const part of safeFolderPath.split("/").filter(Boolean)) {
+    parentId = (await ensureFolder(parentId, part)).id;
+  }
+  const remote = await createText(parentId, `${safeName}.md`, `# ${safeName}\n\n`);
   const created: VaultItemRecord = {
     id: remote.id,
-    parentId: folder.id,
+    parentId,
     name: remote.name,
-    path: `${folderName}/${remote.name}`,
+    path: safeFolderPath ? `${safeFolderPath}/${remote.name}` : remote.name,
     kind: "file",
     content: `# ${safeName}\n\n`,
     eTag: remote.eTag,

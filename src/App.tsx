@@ -272,6 +272,7 @@ export default function App() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [newNoteOpen, setNewNoteOpen] = useState(false);
   const [newTitle, setNewTitle] = useState("");
+  const [newNoteFolder, setNewNoteFolder] = useState("");
   const [creatingNote, setCreatingNote] = useState(false);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
@@ -287,6 +288,16 @@ export default function App() {
   const hiddenAt = useRef<number | null>(null);
 
   const active = items.find((item) => item.id === activeId) ?? items.find((item) => item.kind === "file") ?? items[0];
+  const activeFolderPath = active?.kind === "folder" ? active.path : active?.path.split("/").slice(0, -1).join("/") ?? "";
+  const noteFolders = useMemo(() => {
+    const folders = new Set(items.filter((item) => item.kind === "folder").map((item) => item.path));
+    for (const item of items) {
+      const parts = item.path.split("/").filter(Boolean);
+      const end = item.kind === "folder" ? parts.length : parts.length - 1;
+      for (let index = 1; index <= end; index += 1) folders.add(parts.slice(0, index).join("/"));
+    }
+    return [...folders].filter(Boolean).sort((a, b) => a.localeCompare(b, "ja"));
+  }, [items]);
   const metadata = active ? analyzeNote(active) : null;
   const backlinks = active ? resolveBacklinks(items, active) : [];
   const filteredItems = deferredQuery
@@ -350,12 +361,13 @@ export default function App() {
       }
       if (event.key.toLocaleLowerCase() === "n") {
         event.preventDefault();
+        setNewNoteFolder(activeFolderPath);
         setNewNoteOpen(true);
       }
     };
     window.addEventListener("keydown", keyboard);
     return () => window.removeEventListener("keydown", keyboard);
-  }, []);
+  }, [activeFolderPath]);
 
   function showToast(message: string) {
     setToast(message);
@@ -386,11 +398,11 @@ export default function App() {
     }, 850);
   }
 
-  function uniqueNoteTitle(requestedTitle = "無題") {
+  function uniqueNoteTitle(requestedTitle: string, folderPath: string) {
     const base = requestedTitle.replace(/[\\/:*?"<>|]/g, " ").trim() || "無題";
     const existingNames = new Set(
       items
-        .filter((item) => item.path.startsWith("00_Inbox/"))
+        .filter((item) => item.kind === "file" && item.path.split("/").slice(0, -1).join("/") === folderPath)
         .map((item) => item.name.replace(/\.md$/i, "").toLocaleLowerCase("ja")),
     );
     if (!existingNames.has(base.toLocaleLowerCase("ja"))) return base;
@@ -400,17 +412,24 @@ export default function App() {
     return `${base} ${sequence}`;
   }
 
-  async function createNote(titleOverride?: string) {
+  function openNewNoteDialog() {
+    setNewNoteFolder(activeFolderPath);
+    setNewNoteOpen(true);
+  }
+
+  async function createNote(titleOverride?: string, folderPathOverride?: string) {
     if (creatingNote) return;
-    const title = uniqueNoteTitle(titleOverride ?? newTitle);
+    const folderPath = folderPathOverride ?? newNoteFolder;
+    const title = uniqueNoteTitle(titleOverride ?? newTitle, folderPath);
     setCreatingNote(true);
     try {
       if (isDemo || !cryptoKey || !descriptor) {
+        const selectedFolder = items.find((item) => item.kind === "folder" && item.path === folderPath);
         const created: VaultItemRecord = {
           id: `local-${crypto.randomUUID()}`,
-          parentId: "00_Inbox",
+          parentId: selectedFolder?.id ?? (folderPath || "root"),
           name: `${title}.md`,
-          path: `00_Inbox/${title}.md`,
+          path: folderPath ? `${folderPath}/${title}.md` : `${title}.md`,
           kind: "file",
           content: `# ${title}\n\n`,
           modified: Date.now(),
@@ -422,7 +441,7 @@ export default function App() {
         if (cryptoKey) await persistLocalItems(cryptoKey, next);
       } else {
         setSyncLabel("同期中");
-        const result = await createRemoteNote(cryptoKey, descriptor, title, items);
+        const result = await createRemoteNote(cryptoKey, descriptor, title, items, folderPath);
         setItems(result.items);
         setActiveId(result.item.id);
         setSyncLabel("同期済み");
@@ -439,7 +458,7 @@ export default function App() {
   }
 
   async function createUntitledNote() {
-    await createNote("無題");
+    await createNote("無題", activeFolderPath);
   }
 
   function uniqueFolderName(requestedName = "新規フォルダ") {
@@ -562,7 +581,7 @@ export default function App() {
       </aside>
 
       <aside className="file-explorer">
-        <div className="pane-header"><span>ファイル</span><div><button title="新規ノート" aria-label="新規ノート" onClick={() => setNewNoteOpen(true)}><Plus size={17} /></button><button title="新規フォルダ" aria-label="新規フォルダ" onClick={() => setNewFolderOpen(true)}><FolderPlus size={17} /></button></div></div>
+        <div className="pane-header"><span>ファイル</span><div><button title="新規ノート" aria-label="新規ノート" onClick={openNewNoteDialog}><Plus size={17} /></button><button title="新規フォルダ" aria-label="新規フォルダ" onClick={() => setNewFolderOpen(true)}><FolderPlus size={17} /></button></div></div>
         <div className="tree-scroll">
           {tree.map((node) => (
             <TreeItem key={node.id} node={node} depth={0} activeId={activeId} expanded={expanded} onToggle={(path) => setExpanded((current) => {
@@ -665,7 +684,7 @@ export default function App() {
       )}
       {newNoteOpen && (
         <Modal title="新規ノート" onClose={() => setNewNoteOpen(false)}>
-          <div className="new-note-form"><label>タイトル<input autoFocus value={newTitle} onChange={(event) => setNewTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void createNote(); }} placeholder="無題" /></label><p><FolderOpen size={15} />00_Inbox に作成</p><button className="primary-button" onClick={() => void createNote()} disabled={creatingNote}><FilePlus2 size={17} />{creatingNote ? "作成中…" : "作成"}</button></div>
+          <div className="new-note-form"><label>タイトル<input autoFocus value={newTitle} onChange={(event) => setNewTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void createNote(); }} placeholder="無題" /></label><label>作成先フォルダ<select aria-label="作成先フォルダ" value={newNoteFolder} onChange={(event) => setNewNoteFolder(event.target.value)}><option value="">Vault 直下</option>{noteFolders.map((folder) => <option key={folder} value={folder}>{folder}</option>)}</select></label><p><FolderOpen size={15} />{newNoteFolder || "Vault 直下"} に作成</p><button className="primary-button" onClick={() => void createNote()} disabled={creatingNote}><FilePlus2 size={17} />{creatingNote ? "作成中…" : "作成"}</button></div>
         </Modal>
       )}
       {newFolderOpen && (

@@ -255,7 +255,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .command-footer { display: flex; gap: 16px; padding: 8px 13px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 10px; }
 .new-note-form { padding: 18px; }
 .new-note-form label { display: grid; gap: 7px; color: var(--text-secondary); font-size: 12px; }
-.new-note-form input, .gate-panel input { height: 43px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: 5px; background: var(--bg); color: var(--text-primary); outline: 0; }
+.new-note-form input, .new-note-form select, .gate-panel input { height: 43px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: 5px; background: var(--bg); color: var(--text-primary); outline: 0; }
 .new-note-form p { display: flex; align-items: center; gap: 7px; color: var(--text-muted); font-size: 11px; }
 .primary-button { min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 16px; border-radius: 5px; background: var(--accent); color: #fff; font-weight: 750; }
 .primary-button:hover { filter: brightness(1.08); }
