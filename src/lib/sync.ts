@@ -2,6 +2,7 @@ import type { VaultDescriptor, VaultItemRecord } from "../types";
 import { getEncrypted, putEncrypted } from "./db";
 import {
   createText,
+  createFolder,
   ensureFolder,
   getAppRoot,
   listChildren,
@@ -26,6 +27,18 @@ async function walkFolder(folder: GraphDriveItem, prefix: string, output: VaultI
   for (const child of children) {
     const path = prefix ? `${prefix}/${child.name}` : child.name;
     if (child.folder) {
+      output.push({
+        id: child.id,
+        parentId: child.parentReference?.id ?? folder.id,
+        name: child.name,
+        path,
+        kind: "folder",
+        content: "",
+        eTag: child.eTag,
+        cTag: child.cTag,
+        modified: child.lastModifiedDateTime ? Date.parse(child.lastModifiedDateTime) : Date.now(),
+        syncState: "clean",
+      });
       await walkFolder(child, path, output, settings);
       continue;
     }
@@ -137,6 +150,31 @@ export async function createRemoteNote(
     path: `${folderName}/${remote.name}`,
     kind: "file",
     content: `# ${safeName}\n\n`,
+    eTag: remote.eTag,
+    cTag: remote.cTag,
+    modified: Date.now(),
+    syncState: "clean",
+  };
+  const next = [...items, created];
+  await persistLocalItems(key, next);
+  return { item: created, items: next };
+}
+
+export async function createRemoteFolder(
+  key: CryptoKey,
+  descriptor: VaultDescriptor,
+  name: string,
+  items: VaultItemRecord[],
+) {
+  const safeName = name.replace(/[\\/:*?"<>|]/g, " ").trim() || "新規フォルダ";
+  const remote = await createFolder(descriptor.vaultRootItemId, safeName);
+  const created: VaultItemRecord = {
+    id: remote.id,
+    parentId: descriptor.vaultRootItemId,
+    name: remote.name,
+    path: remote.name,
+    kind: "folder",
+    content: "",
     eTag: remote.eTag,
     cTag: remote.cTag,
     modified: Date.now(),

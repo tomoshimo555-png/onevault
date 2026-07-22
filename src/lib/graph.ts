@@ -57,6 +57,10 @@ export async function listChildren(itemId: string): Promise<GraphDriveItem[]> {
 export async function ensureFolder(parentId: string, name: string): Promise<GraphDriveItem> {
   const existing = (await listChildren(parentId)).find((item) => item.folder && item.name === name);
   if (existing) return existing;
+  return createFolder(parentId, name);
+}
+
+export async function createFolder(parentId: string, name: string): Promise<GraphDriveItem> {
   return graphFetch<GraphDriveItem>(`/me/drive/items/${encodeURIComponent(parentId)}/children`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

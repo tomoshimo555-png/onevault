@@ -20,6 +20,7 @@ import {
   Files,
   Folder,
   FolderOpen,
+  FolderPlus,
   GitFork,
   Lock,
   LockKeyhole,
@@ -42,6 +43,7 @@ import { clearLocalVault, db } from "./lib/db";
 import { createCryptoEnvelope, isStrongPassphrase, unlockCryptoEnvelope } from "./lib/cryptoVault";
 import { analyzeNote, buildTree, resolveBacklinks } from "./lib/markdown";
 import {
+  createRemoteFolder,
   createRemoteNote,
   loadCachedVault,
   loadRemoteVault,
@@ -271,6 +273,9 @@ export default function App() {
   const [newNoteOpen, setNewNoteOpen] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [creatingNote, setCreatingNote] = useState(false);
+  const [newFolderOpen, setNewFolderOpen] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [creatingFolder, setCreatingFolder] = useState(false);
   const [rightOpen, setRightOpen] = useState(true);
   const [view, setView] = useState<"edit" | "read">("edit");
   const [mobilePanel, setMobilePanel] = useState<"files" | "details" | null>(null);
@@ -281,7 +286,7 @@ export default function App() {
   const saveTimer = useRef<number | undefined>(undefined);
   const hiddenAt = useRef<number | null>(null);
 
-  const active = items.find((item) => item.id === activeId) ?? items[0];
+  const active = items.find((item) => item.id === activeId) ?? items.find((item) => item.kind === "file") ?? items[0];
   const metadata = active ? analyzeNote(active) : null;
   const backlinks = active ? resolveBacklinks(items, active) : [];
   const filteredItems = deferredQuery
@@ -309,14 +314,14 @@ export default function App() {
       const cached = await loadCachedVault(cryptoKey);
       if (cached.length) {
         setItems(cached);
-        setActiveId(cached[0].id);
+        setActiveId(cached.find((item) => item.kind === "file")?.id ?? cached[0].id);
       }
       setSyncLabel("同期中");
       try {
         const remote = await loadRemoteVault(cryptoKey);
         setItems(remote.items);
         setDescriptor(remote.descriptor);
-        setActiveId((current) => remote.items.some((item) => item.id === current) ? current : remote.items[0]?.id ?? "");
+        setActiveId((current) => remote.items.some((item) => item.id === current) ? current : remote.items.find((item) => item.kind === "file")?.id ?? remote.items[0]?.id ?? "");
         setSyncLabel("同期済み");
       } catch (error) {
         setSyncLabel("同期エラー");
@@ -437,6 +442,58 @@ export default function App() {
     await createNote("無題");
   }
 
+  function uniqueFolderName(requestedName = "新規フォルダ") {
+    const base = requestedName.replace(/[\\/:*?"<>|]/g, " ").trim() || "新規フォルダ";
+    const existingNames = new Set(
+      items
+        .map((item) => item.path.split("/")[0])
+        .filter(Boolean)
+        .map((name) => name.toLocaleLowerCase("ja")),
+    );
+    if (!existingNames.has(base.toLocaleLowerCase("ja"))) return base;
+
+    let sequence = 2;
+    while (existingNames.has(`${base} ${sequence}`.toLocaleLowerCase("ja"))) sequence += 1;
+    return `${base} ${sequence}`;
+  }
+
+  async function createFolder() {
+    if (creatingFolder) return;
+    const name = uniqueFolderName(newFolderName);
+    setCreatingFolder(true);
+    try {
+      if (isDemo || !cryptoKey || !descriptor) {
+        const created: VaultItemRecord = {
+          id: `local-folder-${crypto.randomUUID()}`,
+          parentId: "root",
+          name,
+          path: name,
+          kind: "folder",
+          content: "",
+          modified: Date.now(),
+          syncState: "clean",
+        };
+        const next = [...items, created];
+        setItems(next);
+        if (cryptoKey) await persistLocalItems(cryptoKey, next);
+      } else {
+        setSyncLabel("同期中");
+        const result = await createRemoteFolder(cryptoKey, descriptor, name, items);
+        setItems(result.items);
+        setSyncLabel("同期済み");
+      }
+      setExpanded((current) => new Set(current).add(name));
+      setNewFolderName("");
+      setNewFolderOpen(false);
+      setMobilePanel(null);
+    } catch (error) {
+      setSyncLabel("同期エラー");
+      showToast(`新規フォルダを作成できませんでした: ${error instanceof Error ? error.message : "不明なエラー"}`);
+    } finally {
+      setCreatingFolder(false);
+    }
+  }
+
   async function refresh() {
     if (isDemo || !cryptoKey) {
       showToast("デモVaultは最新です");
@@ -505,7 +562,7 @@ export default function App() {
       </aside>
 
       <aside className="file-explorer">
-        <div className="pane-header"><span>ファイル</span><div><button title="名前を指定して新規ノート" aria-label="名前を指定して新規ノート" onClick={() => setNewNoteOpen(true)}><Plus size={17} /></button><button title="新規ファイル" aria-label="新規ファイル" onClick={() => void createUntitledNote()} disabled={creatingNote}><FilePlus2 size={17} /></button></div></div>
+        <div className="pane-header"><span>ファイル</span><div><button title="新規ノート" aria-label="新規ノート" onClick={() => setNewNoteOpen(true)}><Plus size={17} /></button><button title="新規フォルダ" aria-label="新規フォルダ" onClick={() => setNewFolderOpen(true)}><FolderPlus size={17} /></button></div></div>
         <div className="tree-scroll">
           {tree.map((node) => (
             <TreeItem key={node.id} node={node} depth={0} activeId={activeId} expanded={expanded} onToggle={(path) => setExpanded((current) => {
@@ -526,7 +583,7 @@ export default function App() {
         </div>
         <div className="tab-strip">
           <div className="note-tab active"><File size={15} /><span>{title}</span><X size={14} /></div>
-          <button className="new-tab" title="新規ファイル" aria-label="新規ファイル" onClick={() => void createUntitledNote()} disabled={creatingNote}><Plus size={17} /></button>
+          <button className="new-tab" title="新規ノート" aria-label="新規ノート" onClick={() => void createUntitledNote()} disabled={creatingNote}><Plus size={17} /></button>
         </div>
         <div className="editor-host">
           {view === "edit" ? (
@@ -609,6 +666,11 @@ export default function App() {
       {newNoteOpen && (
         <Modal title="新規ノート" onClose={() => setNewNoteOpen(false)}>
           <div className="new-note-form"><label>タイトル<input autoFocus value={newTitle} onChange={(event) => setNewTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void createNote(); }} placeholder="無題" /></label><p><FolderOpen size={15} />00_Inbox に作成</p><button className="primary-button" onClick={() => void createNote()} disabled={creatingNote}><FilePlus2 size={17} />{creatingNote ? "作成中…" : "作成"}</button></div>
+        </Modal>
+      )}
+      {newFolderOpen && (
+        <Modal title="新規フォルダ" onClose={() => setNewFolderOpen(false)}>
+          <div className="new-note-form"><label>フォルダ名<input autoFocus value={newFolderName} onChange={(event) => setNewFolderName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void createFolder(); }} placeholder="新規フォルダ" /></label><p><FolderOpen size={15} />Vault の直下に作成</p><button className="primary-button" onClick={() => void createFolder()} disabled={creatingFolder}><FolderPlus size={17} />{creatingFolder ? "作成中…" : "作成"}</button></div>
         </Modal>
       )}
       {toast && <div className="toast"><Sparkles size={16} /><span>{toast}</span></div>}

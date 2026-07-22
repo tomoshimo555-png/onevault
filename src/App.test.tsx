@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import App from "./App";
 
@@ -13,13 +13,15 @@ describe("OneVault shell", () => {
     expect(screen.getByRole("textbox", { name: "Markdown editor" })).toBeInTheDocument();
   });
 
-  it("creates and opens an untitled file from the new-file button", async () => {
+  it("creates a folder from the new-folder button", async () => {
     render(<App />);
 
-    const [newFileButton] = await screen.findAllByRole("button", { name: "新規ファイル" });
-    fireEvent.click(newFileButton);
+    fireEvent.click(await screen.findByRole("button", { name: "新規フォルダ" }));
+    const dialog = await screen.findByRole("dialog", { name: "新規フォルダ" });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "フォルダ名" }), { target: { value: "資料" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "作成" }));
 
-    expect(screen.getAllByText("無題").length).toBeGreaterThan(0);
-    expect(screen.getByRole("textbox", { name: "Markdown editor" })).toHaveTextContent("# 無題");
+    expect(await screen.findByRole("button", { name: "資料" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "新規フォルダ" })).not.toBeInTheDocument();
   });
 });
