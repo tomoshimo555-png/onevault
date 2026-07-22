@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import App from "./App";
+import { demoActivePath } from "./data/demoVault";
 
 afterEach(cleanup);
 
@@ -31,7 +32,9 @@ describe("OneVault shell", () => {
     const [newNoteButton] = await screen.findAllByRole("button", { name: "新規ノート" });
     fireEvent.click(newNoteButton);
     const dialog = await screen.findByRole("dialog", { name: "新規ノート" });
-    fireEvent.change(within(dialog).getByRole("combobox", { name: "作成先フォルダ" }), { target: { value: "00_Inbox" } });
+    const destination = within(dialog).getByRole("combobox", { name: "作成先フォルダ" });
+    expect(destination).toHaveValue(demoActivePath.split("/").slice(0, -1).join("/"));
+    fireEvent.change(destination, { target: { value: "00_Inbox" } });
     fireEvent.change(within(dialog).getByRole("textbox", { name: "タイトル" }), { target: { value: "選択先テスト" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "作成" }));
 
