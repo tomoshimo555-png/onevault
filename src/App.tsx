@@ -20,7 +20,6 @@ import {
   Files,
   Folder,
   FolderOpen,
-  FolderPlus,
   GitFork,
   Lock,
   LockKeyhole,
@@ -271,6 +270,7 @@ export default function App() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [newNoteOpen, setNewNoteOpen] = useState(false);
   const [newTitle, setNewTitle] = useState("");
+  const [creatingNote, setCreatingNote] = useState(false);
   const [rightOpen, setRightOpen] = useState(true);
   const [view, setView] = useState<"edit" | "read">("edit");
   const [mobilePanel, setMobilePanel] = useState<"files" | "details" | null>(null);
@@ -381,33 +381,60 @@ export default function App() {
     }, 850);
   }
 
-  async function createNote() {
-    const title = newTitle.trim() || "無題";
-    if (isDemo || !cryptoKey || !descriptor) {
-      const created: VaultItemRecord = {
-        id: `local-${crypto.randomUUID()}`,
-        parentId: "00_Inbox",
-        name: `${title}.md`,
-        path: `00_Inbox/${title}.md`,
-        kind: "file",
-        content: `# ${title}\n\n`,
-        modified: Date.now(),
-        syncState: "clean",
-      };
-      const next = [...items, created];
-      setItems(next);
-      setActiveId(created.id);
-      if (cryptoKey) await persistLocalItems(cryptoKey, next);
-    } else {
-      setSyncLabel("同期中");
-      const result = await createRemoteNote(cryptoKey, descriptor, title, items);
-      setItems(result.items);
-      setActiveId(result.item.id);
-      setSyncLabel("同期済み");
+  function uniqueNoteTitle(requestedTitle = "無題") {
+    const base = requestedTitle.replace(/[\\/:*?"<>|]/g, " ").trim() || "無題";
+    const existingNames = new Set(
+      items
+        .filter((item) => item.path.startsWith("00_Inbox/"))
+        .map((item) => item.name.replace(/\.md$/i, "").toLocaleLowerCase("ja")),
+    );
+    if (!existingNames.has(base.toLocaleLowerCase("ja"))) return base;
+
+    let sequence = 2;
+    while (existingNames.has(`${base} ${sequence}`.toLocaleLowerCase("ja"))) sequence += 1;
+    return `${base} ${sequence}`;
+  }
+
+  async function createNote(titleOverride?: string) {
+    if (creatingNote) return;
+    const title = uniqueNoteTitle(titleOverride ?? newTitle);
+    setCreatingNote(true);
+    try {
+      if (isDemo || !cryptoKey || !descriptor) {
+        const created: VaultItemRecord = {
+          id: `local-${crypto.randomUUID()}`,
+          parentId: "00_Inbox",
+          name: `${title}.md`,
+          path: `00_Inbox/${title}.md`,
+          kind: "file",
+          content: `# ${title}\n\n`,
+          modified: Date.now(),
+          syncState: "clean",
+        };
+        const next = [...items, created];
+        setItems(next);
+        setActiveId(created.id);
+        if (cryptoKey) await persistLocalItems(cryptoKey, next);
+      } else {
+        setSyncLabel("同期中");
+        const result = await createRemoteNote(cryptoKey, descriptor, title, items);
+        setItems(result.items);
+        setActiveId(result.item.id);
+        setSyncLabel("同期済み");
+      }
+      setNewTitle("");
+      setNewNoteOpen(false);
+      setMobilePanel(null);
+    } catch (error) {
+      setSyncLabel("同期エラー");
+      showToast(`新規ノートを作成できませんでした: ${error instanceof Error ? error.message : "不明なエラー"}`);
+    } finally {
+      setCreatingNote(false);
     }
-    setNewTitle("");
-    setNewNoteOpen(false);
-    setMobilePanel(null);
+  }
+
+  async function createUntitledNote() {
+    await createNote("無題");
   }
 
   async function refresh() {
@@ -478,7 +505,7 @@ export default function App() {
       </aside>
 
       <aside className="file-explorer">
-        <div className="pane-header"><span>ファイル</span><div><button title="新規ノート" onClick={() => setNewNoteOpen(true)}><Plus size={17} /></button><button title="新規フォルダ"><FolderPlus size={17} /></button></div></div>
+        <div className="pane-header"><span>ファイル</span><div><button title="名前を指定して新規ノート" aria-label="名前を指定して新規ノート" onClick={() => setNewNoteOpen(true)}><Plus size={17} /></button><button title="新規ファイル" aria-label="新規ファイル" onClick={() => void createUntitledNote()} disabled={creatingNote}><FilePlus2 size={17} /></button></div></div>
         <div className="tree-scroll">
           {tree.map((node) => (
             <TreeItem key={node.id} node={node} depth={0} activeId={activeId} expanded={expanded} onToggle={(path) => setExpanded((current) => {
@@ -499,7 +526,7 @@ export default function App() {
         </div>
         <div className="tab-strip">
           <div className="note-tab active"><File size={15} /><span>{title}</span><X size={14} /></div>
-          <button className="new-tab" onClick={() => setNewNoteOpen(true)}><Plus size={17} /></button>
+          <button className="new-tab" title="新規ファイル" aria-label="新規ファイル" onClick={() => void createUntitledNote()} disabled={creatingNote}><Plus size={17} /></button>
         </div>
         <div className="editor-host">
           {view === "edit" ? (
@@ -561,7 +588,7 @@ export default function App() {
       <nav className="mobile-nav" aria-label="モバイルナビゲーション">
         <button className="active" onClick={() => setMobilePanel("files")}><Files size={20} /><span>ファイル</span></button>
         <button onClick={() => setSearchOpen(true)}><Search size={20} /><span>検索</span></button>
-        <button className="mobile-new" onClick={() => setNewNoteOpen(true)}><Plus size={24} /><span>新規</span></button>
+        <button className="mobile-new" onClick={() => void createUntitledNote()} disabled={creatingNote}><Plus size={24} /><span>新規</span></button>
         <button onClick={() => setMobilePanel("details")}><MoreHorizontal size={21} /><span>その他</span></button>
       </nav>
 
@@ -581,7 +608,7 @@ export default function App() {
       )}
       {newNoteOpen && (
         <Modal title="新規ノート" onClose={() => setNewNoteOpen(false)}>
-          <div className="new-note-form"><label>タイトル<input autoFocus value={newTitle} onChange={(event) => setNewTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void createNote(); }} placeholder="無題" /></label><p><FolderOpen size={15} />00_Inbox に作成</p><button className="primary-button" onClick={() => void createNote()}><FilePlus2 size={17} />作成</button></div>
+          <div className="new-note-form"><label>タイトル<input autoFocus value={newTitle} onChange={(event) => setNewTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void createNote(); }} placeholder="無題" /></label><p><FolderOpen size={15} />00_Inbox に作成</p><button className="primary-button" onClick={() => void createNote()} disabled={creatingNote}><FilePlus2 size={17} />{creatingNote ? "作成中…" : "作成"}</button></div>
         </Modal>
       )}
       {toast && <div className="toast"><Sparkles size={16} /><span>{toast}</span></div>}
