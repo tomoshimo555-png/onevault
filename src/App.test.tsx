@@ -11,6 +11,7 @@ describe("OneVault shell", () => {
     expect(await screen.findByText("OneVault")).toBeInTheDocument();
     expect(screen.getAllByText("人生のボトルネック改善").length).toBeGreaterThan(0);
     expect(screen.getByText("AppFolder")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /OneDrive に接続/ })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Markdown editor" })).toBeInTheDocument();
   });
 

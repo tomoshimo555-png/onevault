@@ -374,6 +374,12 @@ export default function App() {
     window.setTimeout(() => setToast(""), 3200);
   }
 
+  function connectOneDrive() {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("demo");
+    window.location.assign(url.toString());
+  }
+
   function updateContent(content: string) {
     if (!active) return;
     const next = items.map((item) => item.id === active.id ? { ...item, content, syncState: "dirty" as const } : item);
@@ -589,7 +595,11 @@ export default function App() {
             })} onOpen={openItem} />
           ))}
         </div>
-        <div className="vault-footer"><Lock size={13} /><span>{isDemo ? "Demo Vault" : descriptor?.displayName ?? "KnowledgeVault"}</span></div>
+        {isDemo ? (
+          <button className="vault-footer demo-connect" onClick={connectOneDrive} title="OneDrive に接続して実ファイルへ保存"><Lock size={13} /><span>Demo Vault</span><strong>OneDrive に接続</strong></button>
+        ) : (
+          <div className="vault-footer"><Lock size={13} /><span>{descriptor?.displayName ?? "KnowledgeVault"}</span></div>
+        )}
       </aside>
 
       <section className="workspace">
